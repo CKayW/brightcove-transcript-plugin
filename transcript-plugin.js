@@ -3,11 +3,20 @@
 
   videojs.registerPlugin('interactiveTranscript', function(options) {
     var player = this;
+    
+    // Prevent double initialization
+    if (player.transcriptPluginInitialized) {
+      console.log('Transcript plugin already initialized, skipping');
+      return;
+    }
+    player.transcriptPluginInitialized = true;
+    
     var transcriptContainer;
     var activeTrack = null;
     var isVisible = false;
     var transcriptButton;
     var lastCueCount = 0;
+    var monitoringInterval = null;
     
     function createTranscriptButton() {
       var controlBar = player.controlBar;
@@ -70,7 +79,7 @@
       console.log('Transcript UI created');
     }
     
-    function renderCues(track, forceRender) {
+    function renderCues(track) {
       var transcriptContent = transcriptContainer.querySelector('.vjs-transcript-content');
       var statusElement = transcriptContainer.querySelector('.vjs-transcript-status');
       var cues = track.cues;
@@ -80,10 +89,9 @@
         return false;
       }
       
-      // Check if cue count has changed (more cues loaded)
-      if (cues.length === lastCueCount && !forceRender) {
-        console.log('Cue count unchanged:', cues.length);
-        return true; // Already rendered these
+      // Check if cue count has changed
+      if (cues.length === lastCueCount) {
+        return true; // No change, no need to re-render
       }
       
       console.log('Rendering', cues.length, 'cues (previously had', lastCueCount, ')');
@@ -117,16 +125,43 @@
       return true;
     }
     
-    function waitForAllCues(track, attempt) {
-      attempt = attempt || 0;
-      var maxAttempts = 40; // Increase to 20 seconds
+    function startContinuousMonitoring(track) {
+      // Stop any existing monitoring
+      if (monitoringInterval) {
+        clearInterval(monitoringInterval);
+      }
       
-      console.log('Attempt', attempt + 1, '- Checking for cues...');
+      console.log('Starting continuous cue monitoring...');
+      
+      // Check every 2 seconds for new cues
+      monitoringInterval = setInterval(function() {
+        if (track.cues && track.cues.length > lastCueCount) {
+          console.log('New cues detected during playback! Updating transcript...');
+          renderCues(track);
+        }
+      }, 2000);
+      
+      // Also check when video ends
+      player.one('ended', function() {
+        console.log('Video ended, doing final cue check...');
+        setTimeout(function() {
+          renderCues(track);
+          if (monitoringInterval) {
+            clearInterval(monitoringInterval);
+            console.log('Stopped monitoring - video ended');
+          }
+        }, 1000);
+      });
+    }
+    
+    function waitForInitialCues(track, attempt) {
+      attempt = attempt || 0;
+      var maxAttempts = 20;
+      
+      console.log('Attempt', attempt + 1, '- Checking for initial cues...');
       
       var cues = track.cues;
       if (!cues || cues.length === 0) {
-        console.log('No cues yet, waiting...');
-        
         if (attempt >= maxAttempts) {
           var statusElement = transcriptContainer.querySelector('.vjs-transcript-status');
           var transcriptContent = transcriptContainer.querySelector('.vjs-transcript-content');
@@ -137,51 +172,15 @@
         }
         
         setTimeout(function() {
-          waitForAllCues(track, attempt + 1);
+          waitForInitialCues(track, attempt + 1);
         }, 500);
         return;
       }
       
-      // We have some cues, but let's wait to see if more load
-      var currentCueCount = cues.length;
-      console.log('Found', currentCueCount, 'cues, waiting to see if more load...');
-      
-      // Wait a bit longer to see if more cues come in
-      setTimeout(function() {
-        var newCueCount = track.cues ? track.cues.length : 0;
-        
-        if (newCueCount > currentCueCount) {
-          console.log('More cues loaded (', newCueCount, '), checking again...');
-          waitForAllCues(track, 0); // Reset attempt counter
-        } else if (attempt < 5) {
-          // Still in first few attempts, give it more time
-          console.log('Same cue count, but still early - waiting more...');
-          waitForAllCues(track, attempt + 1);
-        } else {
-          // Cue count stable, render what we have
-          console.log('Cue count stable at', newCueCount, '- rendering now');
-          renderCues(track, true);
-          
-          // Keep monitoring for late-loading cues
-          monitorForMoreCues(track);
-        }
-      }, 500);
-    }
-    
-    function monitorForMoreCues(track) {
-      // Check periodically if more cues load after initial render
-      var checkInterval = setInterval(function() {
-        if (track.cues && track.cues.length > lastCueCount) {
-          console.log('Additional cues detected! Re-rendering...');
-          renderCues(track, true);
-        }
-      }, 2000);
-      
-      // Stop checking after 30 seconds
-      setTimeout(function() {
-        clearInterval(checkInterval);
-        console.log('Stopped monitoring for additional cues');
-      }, 30000);
+      // We have some cues - render them and start monitoring
+      console.log('Found initial', cues.length, 'cues - rendering and starting monitoring');
+      renderCues(track);
+      startContinuousMonitoring(track);
     }
     
     function loadTranscript() {
@@ -211,23 +210,20 @@
       }
       
       activeTrack = foundTrack;
+      
+      // Set track to hidden mode to load cues
       foundTrack.mode = 'hidden';
       
-      // Listen for track load event
-      foundTrack.addEventListener('load', function() {
-        console.log('Track load event fired');
-        waitForAllCues(foundTrack);
-      });
+      // Wait a moment then start checking
+      setTimeout(function() {
+        waitForInitialCues(foundTrack);
+      }, 500);
       
-      // Start checking for cues
-      waitForAllCues(foundTrack);
-      
-      // Also try when video starts playing (sometimes cues load then)
-      player.one('play', function() {
-        console.log('Video started playing, re-checking cues...');
+      // Also update when video plays
+      player.on('play', function() {
         setTimeout(function() {
           if (foundTrack.cues) {
-            renderCues(foundTrack, true);
+            renderCues(foundTrack);
           }
         }, 1000);
       });
@@ -266,23 +262,16 @@
         createTranscriptButton();
         createTranscriptUI();
         
-        // Wait longer before loading transcript
         player.on('loadedmetadata', function() {
-          console.log('Player metadata loaded');
-          setTimeout(function() {
-            console.log('Loading transcript...');
-            loadTranscript();
-            highlightActiveCue();
-          }, 1000);
+          console.log('Player metadata loaded, loading transcript...');
+          loadTranscript();
+          highlightActiveCue();
         });
         
         if (player.readyState() >= 1) {
-          console.log('Player already has metadata');
-          setTimeout(function() {
-            console.log('Loading transcript...');
-            loadTranscript();
-            highlightActiveCue();
-          }, 1000);
+          console.log('Player already has metadata, loading transcript now...');
+          loadTranscript();
+          highlightActiveCue();
         }
       }, 1000);
     });
