@@ -4,7 +4,6 @@
   videojs.registerPlugin('interactiveTranscript', function(options) {
     var player = this;
     
-    // Prevent double initialization
     if (player.transcriptPluginInitialized) {
       console.log('Transcript plugin already initialized, skipping');
       return;
@@ -16,7 +15,7 @@
     var isVisible = false;
     var transcriptButton;
     var lastCueCount = 0;
-    var monitoringInterval = null;
+    var allCuesLoaded = false;
     
     function createTranscriptButton() {
       var controlBar = player.controlBar;
@@ -44,7 +43,6 @@
         var controlBarEl = player.el().querySelector('.vjs-control-bar');
         if (controlBarEl) {
           controlBarEl.appendChild(transcriptButton);
-          console.log('Transcript button appended to control bar');
         }
       }
     }
@@ -67,7 +65,7 @@
       transcriptContainer = document.createElement('div');
       transcriptContainer.className = 'vjs-transcript-container';
       transcriptContainer.style.display = 'none';
-      transcriptContainer.innerHTML = '<div class="vjs-transcript-header">Transcript <span class="vjs-transcript-close">×</span><span class="vjs-transcript-status">Loading...</span></div><div class="vjs-transcript-content"></div>';
+      transcriptContainer.innerHTML = '<div class="vjs-transcript-header">Transcript <span class="vjs-transcript-close">×</span><span class="vjs-transcript-status">Loading full transcript...</span></div><div class="vjs-transcript-content"></div>';
       
       player.el().appendChild(transcriptContainer);
       
@@ -89,15 +87,14 @@
         return false;
       }
       
-      // Check if cue count has changed
-      if (cues.length === lastCueCount) {
-        return true; // No change, no need to re-render
+      if (cues.length === lastCueCount && allCuesLoaded) {
+        return true;
       }
       
       console.log('Rendering', cues.length, 'cues (previously had', lastCueCount, ')');
       lastCueCount = cues.length;
       
-      statusElement.textContent = '(' + cues.length + ' lines)';
+      statusElement.textContent = '(' + cues.length + ' of ~265 lines)';
       transcriptContent.innerHTML = '';
       
       for (var j = 0; j < cues.length; j++) {
@@ -121,44 +118,76 @@
         transcriptContent.appendChild(cueElement);
       }
       
-      console.log('Transcript rendered successfully with', cues.length, 'cues');
+      console.log('Transcript rendered with', cues.length, 'cues');
       return true;
     }
     
-    function startContinuousMonitoring(track) {
-      // Stop any existing monitoring
-      if (monitoringInterval) {
-        clearInterval(monitoringInterval);
+    function forceLoadAllCues(track) {
+      console.log('Forcing all cues to load...');
+      
+      var originalMode = track.mode;
+      var videoDuration = player.duration();
+      
+      console.log('Video duration:', videoDuration, 'seconds');
+      
+      // Strategy 1: Set track to "showing" to force load
+      track.mode = 'showing';
+      
+      // Strategy 2: Quickly seek through video to trigger cue loading
+      var currentTime = player.currentTime();
+      var wasPlaying = !player.paused();
+      
+      if (wasPlaying) {
+        player.pause();
       }
       
-      console.log('Starting continuous cue monitoring...');
+      // Seek to multiple points to trigger cue loading
+      var seekPoints = [0, videoDuration * 0.25, videoDuration * 0.5, videoDuration * 0.75, videoDuration - 1];
+      var seekIndex = 0;
       
-      // Check every 2 seconds for new cues
-      monitoringInterval = setInterval(function() {
-        if (track.cues && track.cues.length > lastCueCount) {
-          console.log('New cues detected during playback! Updating transcript...');
-          renderCues(track);
-        }
-      }, 2000);
-      
-      // Also check when video ends
-      player.one('ended', function() {
-        console.log('Video ended, doing final cue check...');
-        setTimeout(function() {
-          renderCues(track);
-          if (monitoringInterval) {
-            clearInterval(monitoringInterval);
-            console.log('Stopped monitoring - video ended');
+      function seekNext() {
+        if (seekIndex < seekPoints.length) {
+          var seekTo = seekPoints[seekIndex];
+          console.log('Seeking to', seekTo.toFixed(1), 'seconds to load cues...');
+          player.currentTime(seekTo);
+          seekIndex++;
+          setTimeout(seekNext, 300);
+        } else {
+          // Done seeking, restore state
+          console.log('Finished seeking, restoring player state...');
+          player.currentTime(currentTime);
+          
+          // Hide captions after load
+          track.mode = 'hidden';
+          
+          if (wasPlaying) {
+            player.play();
           }
-        }, 1000);
-      });
+          
+          // Wait a bit then render
+          setTimeout(function() {
+            var cueCount = track.cues ? track.cues.length : 0;
+            console.log('Final cue count after force load:', cueCount);
+            
+            if (cueCount > 0) {
+              allCuesLoaded = true;
+              renderCues(track);
+              var statusElement = transcriptContainer.querySelector('.vjs-transcript-status');
+              statusElement.textContent = '(' + cueCount + ' lines)';
+            }
+          }, 1000);
+        }
+      }
+      
+      // Start seeking process after a short delay
+      setTimeout(seekNext, 500);
     }
     
-    function waitForInitialCues(track, attempt) {
+    function waitAndLoadCues(track, attempt) {
       attempt = attempt || 0;
-      var maxAttempts = 20;
+      var maxAttempts = 10;
       
-      console.log('Attempt', attempt + 1, '- Checking for initial cues...');
+      console.log('Attempt', attempt + 1, '- Checking for cues...');
       
       var cues = track.cues;
       if (!cues || cues.length === 0) {
@@ -167,20 +196,32 @@
           var transcriptContent = transcriptContainer.querySelector('.vjs-transcript-content');
           statusElement.textContent = 'Failed to load';
           transcriptContent.innerHTML = '<p style="padding: 15px; color: #ff6b6b;">Captions failed to load. Try playing the video.</p>';
-          console.error('Failed to load captions after', maxAttempts, 'attempts');
+          console.error('Failed to load captions');
           return;
         }
         
         setTimeout(function() {
-          waitForInitialCues(track, attempt + 1);
+          waitAndLoadCues(track, attempt + 1);
         }, 500);
         return;
       }
       
-      // We have some cues - render them and start monitoring
-      console.log('Found initial', cues.length, 'cues - rendering and starting monitoring');
+      // We have some cues, now force load all of them
+      console.log('Initial cues found:', cues.length, '- now forcing full load...');
       renderCues(track);
-      startContinuousMonitoring(track);
+      
+      // Force load all cues
+      setTimeout(function() {
+        forceLoadAllCues(track);
+      }, 1000);
+      
+      // Also keep monitoring during playback
+      player.on('timeupdate', function() {
+        if (!allCuesLoaded && track.cues && track.cues.length > lastCueCount) {
+          console.log('More cues loaded during playback:', track.cues.length);
+          renderCues(track);
+        }
+      });
     }
     
     function loadTranscript() {
@@ -205,28 +246,16 @@
       if (!foundTrack) {
         statusElement.textContent = 'No captions found';
         transcriptContent.innerHTML = '<p style="padding: 15px; color: #999;">This video does not have captions.</p>';
-        console.warn('No caption tracks found on this video');
+        console.warn('No caption tracks found');
         return;
       }
       
       activeTrack = foundTrack;
-      
-      // Set track to hidden mode to load cues
       foundTrack.mode = 'hidden';
       
-      // Wait a moment then start checking
       setTimeout(function() {
-        waitForInitialCues(foundTrack);
+        waitAndLoadCues(foundTrack);
       }, 500);
-      
-      // Also update when video plays
-      player.on('play', function() {
-        setTimeout(function() {
-          if (foundTrack.cues) {
-            renderCues(foundTrack);
-          }
-        }, 1000);
-      });
     }
     
     function highlightActiveCue() {
