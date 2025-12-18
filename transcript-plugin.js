@@ -289,30 +289,3 @@
   });
 
 })(window.videojs);
-```
-
-## What This Version Does Differently:
-
-1. **Waits longer initially** - 1 second delay before starting to check for cues
-2. **Monitors for changes** - Keeps checking if the cue count increases
-3. **Re-renders if more cues load** - Updates the transcript if additional cues appear
-4. **Checks when video plays** - Sometimes cues don't fully load until playback starts
-5. **Continues monitoring** - Watches for 30 seconds after initial render to catch late-loading cues
-6. **Better logging** - Shows you exactly how many cues it finds at each step
-
-## How to Update:
-
-1. **Replace the file on GitHub**
-2. **Wait 3 minutes** for GitHub Pages to update
-3. **Clear cache** (Ctrl+Shift+R)
-4. **Open the console** (F12) and watch the messages
-5. **Look for:** "Rendering X cues (previously had Y)"
-
-## Check the Console:
-
-You should see messages like:
-```
-Attempt 1 - Checking for cues...
-Found 6 cues, waiting to see if more load...
-Cue count stable at 50 - rendering now
-Rendering 50 cues (previously had 0)
