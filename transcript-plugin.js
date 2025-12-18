@@ -184,4 +184,48 @@
         }
         
         var currentTime = player.currentTime();
-        var cues = transcript
+        var cues = transcriptContainer.querySelectorAll('.vjs-transcript-cue');
+        
+        for (var i = 0; i < cues.length; i++) {
+          var cue = cues[i];
+          var startTime = parseFloat(cue.getAttribute('data-start'));
+          var endTime = parseFloat(cue.getAttribute('data-end'));
+          
+          if (currentTime >= startTime && currentTime < endTime) {
+            cue.classList.add('vjs-transcript-active');
+            if (transcriptContainer.scrollTop > cue.offsetTop - 100 || transcriptContainer.scrollTop < cue.offsetTop - transcriptContainer.clientHeight + 100) {
+              cue.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+          } else {
+            cue.classList.remove('vjs-transcript-active');
+          }
+        }
+      });
+    }
+    
+    player.ready(function() {
+      console.log('Player ready, initializing transcript plugin');
+      
+      try {
+        createTranscriptButton();
+      } catch (e) {
+        console.error('Error creating transcript button:', e);
+      }
+      
+      createTranscriptUI();
+      
+      player.on('loadedmetadata', function() {
+        console.log('Player metadata loaded, loading transcript...');
+        loadTranscript();
+        highlightActiveCue();
+      });
+      
+      if (player.readyState() >= 1) {
+        console.log('Player already has metadata, loading transcript now...');
+        loadTranscript();
+        highlightActiveCue();
+      }
+    });
+  });
+
+})(window.videojs);
