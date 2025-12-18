@@ -8,22 +8,32 @@
     var isVisible = false;
     
     function createTranscriptButton() {
+      // Modern Video.js button creation
       var Button = videojs.getComponent('Button');
-      var TranscriptButton = videojs.extend(Button, {
-        constructor: function() {
-          Button.apply(this, arguments);
-          this.controlText('Transcript');
-        },
-        buildCSSClass: function() {
-          return 'vjs-transcript-button vjs-control vjs-button';
-        },
-        handleClick: function() {
-          toggleTranscript();
-        }
-      });
+      
+      var TranscriptButton = function() {
+        Button.call(this, player);
+      };
+      
+      TranscriptButton.prototype = Object.create(Button.prototype);
+      TranscriptButton.prototype.constructor = TranscriptButton;
+      
+      TranscriptButton.prototype.buildCSSClass = function() {
+        return 'vjs-transcript-button vjs-control vjs-button';
+      };
+      
+      TranscriptButton.prototype.handleClick = function() {
+        toggleTranscript();
+      };
+      
+      TranscriptButton.prototype.createEl = function() {
+        var el = Button.prototype.createEl.call(this, 'button');
+        el.innerHTML = '<span class="vjs-icon-placeholder" aria-hidden="true">T</span><span class="vjs-control-text" aria-live="polite">Transcript</span>';
+        return el;
+      };
       
       videojs.registerComponent('TranscriptButton', TranscriptButton);
-      player.getChild('controlBar').addChild('TranscriptButton', {}, 14);
+      player.getChild('controlBar').addChild('TranscriptButton', {});
       
       console.log('Transcript button added to control bar');
     }
@@ -33,11 +43,13 @@
       
       if (isVisible) {
         transcriptContainer.style.display = 'block';
-        player.el().querySelector('.vjs-transcript-button').classList.add('vjs-transcript-button-active');
+        var btn = player.el().querySelector('.vjs-transcript-button');
+        if (btn) btn.classList.add('vjs-transcript-button-active');
         console.log('Transcript shown');
       } else {
         transcriptContainer.style.display = 'none';
-        player.el().querySelector('.vjs-transcript-button').classList.remove('vjs-transcript-button-active');
+        var btn = player.el().querySelector('.vjs-transcript-button');
+        if (btn) btn.classList.remove('vjs-transcript-button-active');
         console.log('Transcript hidden');
       }
     }
@@ -45,13 +57,11 @@
     function createTranscriptUI() {
       transcriptContainer = document.createElement('div');
       transcriptContainer.className = 'vjs-transcript-container';
-      transcriptContainer.style.display = 'none'; // Hidden by default
+      transcriptContainer.style.display = 'none';
       transcriptContainer.innerHTML = '<div class="vjs-transcript-header">Transcript <span class="vjs-transcript-close">×</span><span class="vjs-transcript-status">Loading...</span></div><div class="vjs-transcript-content"></div>';
       
-      // Append to player element so it overlays
       player.el().appendChild(transcriptContainer);
       
-      // Add close button functionality
       var closeBtn = transcriptContainer.querySelector('.vjs-transcript-close');
       closeBtn.addEventListener('click', function() {
         toggleTranscript();
@@ -174,42 +184,4 @@
         }
         
         var currentTime = player.currentTime();
-        var cues = transcriptContainer.querySelectorAll('.vjs-transcript-cue');
-        
-        for (var i = 0; i < cues.length; i++) {
-          var cue = cues[i];
-          var startTime = parseFloat(cue.getAttribute('data-start'));
-          var endTime = parseFloat(cue.getAttribute('data-end'));
-          
-          if (currentTime >= startTime && currentTime < endTime) {
-            cue.classList.add('vjs-transcript-active');
-            if (transcriptContainer.scrollTop > cue.offsetTop - 100 || transcriptContainer.scrollTop < cue.offsetTop - transcriptContainer.clientHeight + 100) {
-              cue.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }
-          } else {
-            cue.classList.remove('vjs-transcript-active');
-          }
-        }
-      });
-    }
-    
-    player.ready(function() {
-      console.log('Player ready, initializing transcript plugin');
-      createTranscriptButton();
-      createTranscriptUI();
-      
-      player.on('loadedmetadata', function() {
-        console.log('Player metadata loaded, loading transcript...');
-        loadTranscript();
-        highlightActiveCue();
-      });
-      
-      if (player.readyState() >= 1) {
-        console.log('Player already has metadata, loading transcript now...');
-        loadTranscript();
-        highlightActiveCue();
-      }
-    });
-  });
-
-})(window.videojs);
+        var cues = transcript
