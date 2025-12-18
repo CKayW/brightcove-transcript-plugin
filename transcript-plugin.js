@@ -6,36 +6,44 @@
     var transcriptContainer;
     var activeTrack = null;
     var isVisible = false;
+    var transcriptButton;
     
     function createTranscriptButton() {
-      // Modern Video.js button creation
-      var Button = videojs.getComponent('Button');
+      // Wait for control bar to be ready
+      var controlBar = player.controlBar;
       
-      var TranscriptButton = function() {
-        Button.call(this, player);
-      };
+      if (!controlBar) {
+        console.error('Control bar not found');
+        return;
+      }
       
-      TranscriptButton.prototype = Object.create(Button.prototype);
-      TranscriptButton.prototype.constructor = TranscriptButton;
+      // Create a simple button element
+      transcriptButton = document.createElement('button');
+      transcriptButton.className = 'vjs-control vjs-button vjs-transcript-button';
+      transcriptButton.type = 'button';
+      transcriptButton.title = 'Transcript';
+      transcriptButton.innerHTML = '<span class="vjs-icon-placeholder" aria-hidden="true">T</span>';
       
-      TranscriptButton.prototype.buildCSSClass = function() {
-        return 'vjs-transcript-button vjs-control vjs-button';
-      };
-      
-      TranscriptButton.prototype.handleClick = function() {
+      // Add click handler
+      transcriptButton.addEventListener('click', function() {
         toggleTranscript();
-      };
+      });
       
-      TranscriptButton.prototype.createEl = function() {
-        var el = Button.prototype.createEl.call(this, 'button');
-        el.innerHTML = '<span class="vjs-icon-placeholder" aria-hidden="true">T</span><span class="vjs-control-text" aria-live="polite">Transcript</span>';
-        return el;
-      };
-      
-      videojs.registerComponent('TranscriptButton', TranscriptButton);
-      player.getChild('controlBar').addChild('TranscriptButton', {});
-      
-      console.log('Transcript button added to control bar');
+      // Insert button into control bar (before fullscreen button)
+      var fullscreenToggle = player.el().querySelector('.vjs-fullscreen-control');
+      if (fullscreenToggle && fullscreenToggle.parentNode) {
+        fullscreenToggle.parentNode.insertBefore(transcriptButton, fullscreenToggle);
+        console.log('Transcript button added to control bar (before fullscreen)');
+      } else {
+        // Fallback: just append to control bar
+        var controlBarEl = player.el().querySelector('.vjs-control-bar');
+        if (controlBarEl) {
+          controlBarEl.appendChild(transcriptButton);
+          console.log('Transcript button appended to control bar');
+        } else {
+          console.error('Could not find control bar element');
+        }
+      }
     }
     
     function toggleTranscript() {
@@ -43,13 +51,11 @@
       
       if (isVisible) {
         transcriptContainer.style.display = 'block';
-        var btn = player.el().querySelector('.vjs-transcript-button');
-        if (btn) btn.classList.add('vjs-transcript-button-active');
+        if (transcriptButton) transcriptButton.classList.add('vjs-transcript-button-active');
         console.log('Transcript shown');
       } else {
         transcriptContainer.style.display = 'none';
-        var btn = player.el().querySelector('.vjs-transcript-button');
-        if (btn) btn.classList.remove('vjs-transcript-button-active');
+        if (transcriptButton) transcriptButton.classList.remove('vjs-transcript-button-active');
         console.log('Transcript hidden');
       }
     }
@@ -206,25 +212,23 @@
     player.ready(function() {
       console.log('Player ready, initializing transcript plugin');
       
-      try {
+      // Wait a bit for control bar to be fully rendered
+      setTimeout(function() {
         createTranscriptButton();
-      } catch (e) {
-        console.error('Error creating transcript button:', e);
-      }
-      
-      createTranscriptUI();
-      
-      player.on('loadedmetadata', function() {
-        console.log('Player metadata loaded, loading transcript...');
-        loadTranscript();
-        highlightActiveCue();
-      });
-      
-      if (player.readyState() >= 1) {
-        console.log('Player already has metadata, loading transcript now...');
-        loadTranscript();
-        highlightActiveCue();
-      }
+        createTranscriptUI();
+        
+        player.on('loadedmetadata', function() {
+          console.log('Player metadata loaded, loading transcript...');
+          loadTranscript();
+          highlightActiveCue();
+        });
+        
+        if (player.readyState() >= 1) {
+          console.log('Player already has metadata, loading transcript now...');
+          loadTranscript();
+          highlightActiveCue();
+        }
+      }, 1000);
     });
   });
 
