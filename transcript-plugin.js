@@ -302,27 +302,3 @@
   });
 
 })(window.videojs);
-```
-
-## What This Does:
-
-1. **Seeks through the ENTIRE video** every 15 seconds (e.g., 0s, 15s, 30s, 45s... all the way to the end)
-2. **Shows progress** as it loads: "Seeking to X s... (Y of Z)"
-3. **Updates transcript in real-time** as more cues load
-4. **Waits 400ms between seeks** to give cues time to load
-5. **Final check** and warning if we don't get close to 265 cues
-
-## What You'll See:
-
-Console will show:
-```
-Video duration: 245.0 seconds
-Will seek to 18 points in video
-Seeking to 0.0 s... (1 of 18)
-  -> Cues loaded so far: 15
-Seeking to 15.0 s... (2 of 18)
-  -> Cues loaded so far: 43
-Seeking to 30.0 s... (3 of 18)
-  -> Cues loaded so far: 78
-...
-✓ Final transcript loaded with 265 cues
