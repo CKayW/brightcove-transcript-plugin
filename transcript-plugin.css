@@ -1,24 +1,34 @@
+/* Position transcript NEXT to the player, not over it */
 .vjs-transcript-container {
-  position: absolute;
-  right: 0;
-  top: 0;
-  width: 300px;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.85);
+  display: inline-block;
+  vertical-align: top;
+  width: 350px;
+  max-height: 500px;
+  background: #1a1a1a;
   color: #fff;
   overflow-y: auto;
   font-family: Arial, sans-serif;
-  z-index: 1;
+  border: 1px solid #333;
+  border-radius: 4px;
+  margin-left: 20px;
 }
 
 .vjs-transcript-header {
   padding: 15px;
   font-weight: bold;
   font-size: 16px;
-  border-bottom: 1px solid #444;
+  border-bottom: 1px solid #333;
   position: sticky;
   top: 0;
-  background: rgba(0, 0, 0, 0.95);
+  background: #1a1a1a;
+  z-index: 10;
+}
+
+.vjs-transcript-status {
+  float: right;
+  font-size: 12px;
+  font-weight: normal;
+  color: #888;
 }
 
 .vjs-transcript-content {
@@ -42,4 +52,11 @@
 .vjs-transcript-cue.vjs-transcript-active {
   background: rgba(66, 133, 244, 0.3);
   border-left: 3px solid #4285f4;
+  padding-left: 7px;
+}
+
+/* Make the parent container display flex so player and transcript sit side by side */
+.video-js {
+  display: inline-block;
+  vertical-align: top;
 }
