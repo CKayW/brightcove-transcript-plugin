@@ -1,31 +1,70 @@
-/* Position transcript NEXT to the player, not over it */
+/* Button in player controls */
+.vjs-transcript-button {
+  cursor: pointer;
+}
+
+.vjs-transcript-button:before {
+  content: "T";
+  font-size: 1.8em;
+  line-height: 1.67;
+  font-weight: bold;
+}
+
+.vjs-transcript-button:hover {
+  color: #fff;
+}
+
+.vjs-transcript-button-active {
+  color: #4285f4 !important;
+}
+
+/* Transcript container - now overlays the player */
 .vjs-transcript-container {
-  display: inline-block;
-  vertical-align: top;
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  bottom: 50px; /* Leave room for controls */
   width: 350px;
-  max-height: 500px;
-  background: #1a1a1a;
+  background: rgba(0, 0, 0, 0.95);
   color: #fff;
   overflow-y: auto;
   font-family: Arial, sans-serif;
-  border: 1px solid #333;
-  border-radius: 4px;
-  margin-left: 20px;
+  border: 1px solid #444;
+  border-radius: 8px;
+  z-index: 10;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
 }
 
 .vjs-transcript-header {
   padding: 15px;
   font-weight: bold;
   font-size: 16px;
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid #444;
   position: sticky;
   top: 0;
-  background: #1a1a1a;
-  z-index: 10;
+  background: rgba(0, 0, 0, 0.95);
+  z-index: 11;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.vjs-transcript-close {
+  cursor: pointer;
+  font-size: 28px;
+  line-height: 1;
+  font-weight: normal;
+  color: #999;
+  margin-left: auto;
+  margin-right: 10px;
+  transition: color 0.2s;
+}
+
+.vjs-transcript-close:hover {
+  color: #fff;
 }
 
 .vjs-transcript-status {
-  float: right;
   font-size: 12px;
   font-weight: normal;
   color: #888;
@@ -55,8 +94,13 @@
   padding-left: 7px;
 }
 
-/* Make the parent container display flex so player and transcript sit side by side */
-.video-js {
-  display: inline-block;
-  vertical-align: top;
+/* Responsive: smaller screens */
+@media (max-width: 768px) {
+  .vjs-transcript-container {
+    width: 90%;
+    right: 5%;
+    left: 5%;
+    bottom: 60px;
+    top: 50px;
+  }
 }
