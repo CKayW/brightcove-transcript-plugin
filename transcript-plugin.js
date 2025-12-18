@@ -4,18 +4,79 @@
   videojs.registerPlugin('interactiveTranscript', function(options) {
     var player = this;
     var transcriptContainer;
+    var activeTrack = null;
     
     function createTranscriptUI() {
-      // Create container NEXT to the player, not over it
       var playerParent = player.el().parentNode;
       transcriptContainer = document.createElement('div');
       transcriptContainer.className = 'vjs-transcript-container';
       transcriptContainer.innerHTML = '<div class="vjs-transcript-header">Transcript <span class="vjs-transcript-status">Loading...</span></div><div class="vjs-transcript-content"></div>';
-      
-      // Insert after the player element
       playerParent.insertBefore(transcriptContainer, player.el().nextSibling);
-      
       console.log('Transcript UI created');
+    }
+    
+    function renderCues(track) {
+      var transcriptContent = transcriptContainer.querySelector('.vjs-transcript-content');
+      var statusElement = transcriptContainer.querySelector('.vjs-transcript-status');
+      var cues = track.cues;
+      
+      if (!cues || cues.length === 0) {
+        console.log('Still no cues available');
+        return false;
+      }
+      
+      console.log('SUCCESS! Rendering', cues.length, 'cues');
+      statusElement.textContent = '(' + cues.length + ' lines)';
+      transcriptContent.innerHTML = '';
+      
+      for (var j = 0; j < cues.length; j++) {
+        var cue = cues[j];
+        var cueElement = document.createElement('p');
+        cueElement.className = 'vjs-transcript-cue';
+        cueElement.setAttribute('data-start', cue.startTime);
+        cueElement.setAttribute('data-end', cue.endTime);
+        
+        var text = cue.text || '';
+        text = text.replace(/<[^>]*>/g, '');
+        text = text.replace(/\n/g, ' ');
+        cueElement.textContent = text;
+        
+        cueElement.addEventListener('click', function() {
+          var startTime = parseFloat(this.getAttribute('data-start'));
+          player.currentTime(startTime);
+          player.play();
+        });
+        
+        transcriptContent.appendChild(cueElement);
+      }
+      
+      return true;
+    }
+    
+    function waitForCues(track, attempt) {
+      attempt = attempt || 0;
+      var maxAttempts = 20; // Try for 10 seconds
+      
+      console.log('Attempt', attempt + 1, '- Checking for cues...');
+      
+      if (renderCues(track)) {
+        console.log('Transcript loaded successfully!');
+        return;
+      }
+      
+      if (attempt >= maxAttempts) {
+        var statusElement = transcriptContainer.querySelector('.vjs-transcript-status');
+        var transcriptContent = transcriptContainer.querySelector('.vjs-transcript-content');
+        statusElement.textContent = 'Failed to load';
+        transcriptContent.innerHTML = '<p style="padding: 15px; color: #ff6b6b;">Captions failed to load. Try refreshing the page or playing the video first.</p>';
+        console.error('Failed to load captions after', maxAttempts, 'attempts');
+        return;
+      }
+      
+      // Try again in 500ms
+      setTimeout(function() {
+        waitForCues(track, attempt + 1);
+      }, 500);
     }
     
     function loadTranscript() {
@@ -25,13 +86,12 @@
       
       console.log('Total text tracks found:', tracks.length);
       
-      // Try to find any text track
       var foundTrack = null;
       for (var i = 0; i < tracks.length; i++) {
         var track = tracks[i];
-        console.log('Track ' + i + ':', track.kind, track.label, track.language);
+        console.log('Track', i + ':', track.kind, track.label, track.language, 'mode:', track.mode);
         
-        if (track.kind === 'captions' || track.kind === 'subtitles' || track.kind === 'metadata') {
+        if (track.kind === 'captions' || track.kind === 'subtitles') {
           foundTrack = track;
           console.log('Using track:', track.label || track.kind);
           break;
@@ -45,69 +105,33 @@
         return;
       }
       
-      // Function to render cues
-      function renderCues() {
-        var cues = foundTrack.cues;
-        
-        if (!cues || cues.length === 0) {
-          console.log('Track has no cues yet, waiting...');
-          return;
-        }
-        
-        console.log('Rendering', cues.length, 'cues');
-        statusElement.textContent = '(' + cues.length + ' lines)';
-        transcriptContent.innerHTML = '';
-        
-        for (var j = 0; j < cues.length; j++) {
-          var cue = cues[j];
-          var cueElement = document.createElement('p');
-          cueElement.className = 'vjs-transcript-cue';
-          cueElement.setAttribute('data-start', cue.startTime);
-          cueElement.setAttribute('data-end', cue.endTime);
-          
-          // Clean up the text (remove HTML tags, VTT formatting)
-          var text = cue.text || '';
-          text = text.replace(/<[^>]*>/g, '');
-          text = text.replace(/\n/g, ' ');
-          cueElement.textContent = text;
-          
-          // Click to seek
-          cueElement.addEventListener('click', function() {
-            var startTime = parseFloat(this.getAttribute('data-start'));
-            player.currentTime(startTime);
-            player.play();
-          });
-          
-          transcriptContent.appendChild(cueElement);
-        }
-        
-        console.log('Transcript loaded successfully');
-      }
+      activeTrack = foundTrack;
       
-      // Set track mode to hidden (loads captions without displaying them)
+      // Make sure track is enabled
       foundTrack.mode = 'hidden';
       
-      // Listen for cues to load
+      // Listen for load event
       foundTrack.addEventListener('load', function() {
-        console.log('Track loaded event fired');
-        renderCues();
+        console.log('Track "load" event fired');
+        waitForCues(foundTrack);
       });
       
-      // Also try rendering immediately in case already loaded
-      setTimeout(function() {
-        renderCues();
-      }, 100);
-      
-      // And try again after a longer delay
-      setTimeout(function() {
+      // Listen for cuechange
+      foundTrack.addEventListener('cuechange', function() {
+        console.log('Track "cuechange" event fired');
         if (transcriptContent.children.length === 0) {
-          renderCues();
+          waitForCues(foundTrack);
         }
-      }, 1000);
+      });
+      
+      // Start polling for cues immediately
+      waitForCues(foundTrack);
     }
     
     function highlightActiveCue() {
       player.on('timeupdate', function() {
+        if (!transcriptContainer) return;
+        
         var currentTime = player.currentTime();
         var cues = transcriptContainer.querySelectorAll('.vjs-transcript-cue');
         
@@ -118,29 +142,5 @@
           
           if (currentTime >= startTime && currentTime < endTime) {
             cue.classList.add('vjs-transcript-active');
-            // Auto-scroll
             if (transcriptContainer.scrollTop > cue.offsetTop - 100 || 
-                transcriptContainer.scrollTop < cue.offsetTop - transcriptContainer.clientHeight + 100) {
-              cue.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }
-          } else {
-            cue.classList.remove('vjs-transcript-active');
-          }
-        }
-      });
-    }
-    
-    // Initialize
-    player.ready(function() {
-      console.log('Player ready, initializing transcript plugin');
-      createTranscriptUI();
-      
-      // Wait a bit for tracks to be available
-      setTimeout(function() {
-        loadTranscript();
-        highlightActiveCue();
-      }, 500);
-    });
-  });
-
-})(window.videojs);
+                transcriptContainer.scrollTop < cue.offsetTop - tra
