@@ -14,8 +14,7 @@
     var activeTrack = null;
     var isVisible = false;
     var transcriptButton;
-    var lastCueCount = 0;
-    var allCuesLoaded = false;
+    var allCues = [];
     
     function createTranscriptButton() {
       var controlBar = player.controlBar;
@@ -38,7 +37,7 @@
       var fullscreenToggle = player.el().querySelector('.vjs-fullscreen-control');
       if (fullscreenToggle && fullscreenToggle.parentNode) {
         fullscreenToggle.parentNode.insertBefore(transcriptButton, fullscreenToggle);
-        console.log('Transcript button added to control bar');
+        console.log('Transcript button added');
       } else {
         var controlBarEl = player.el().querySelector('.vjs-control-bar');
         if (controlBarEl) {
@@ -53,11 +52,9 @@
       if (isVisible) {
         transcriptContainer.style.display = 'block';
         if (transcriptButton) transcriptButton.classList.add('vjs-transcript-button-active');
-        console.log('Transcript shown');
       } else {
         transcriptContainer.style.display = 'none';
         if (transcriptButton) transcriptButton.classList.remove('vjs-transcript-button-active');
-        console.log('Transcript hidden');
       }
     }
     
@@ -65,7 +62,7 @@
       transcriptContainer = document.createElement('div');
       transcriptContainer.className = 'vjs-transcript-container';
       transcriptContainer.style.display = 'none';
-      transcriptContainer.innerHTML = '<div class="vjs-transcript-header">Transcript <span class="vjs-transcript-close">×</span><span class="vjs-transcript-status">Loading full transcript...</span></div><div class="vjs-transcript-content"></div>';
+      transcriptContainer.innerHTML = '<div class="vjs-transcript-header">Transcript <span class="vjs-transcript-close">×</span><span class="vjs-transcript-status">Loading...</span></div><div class="vjs-transcript-content"></div>';
       
       player.el().appendChild(transcriptContainer);
       
@@ -77,24 +74,79 @@
       console.log('Transcript UI created');
     }
     
-    function renderCues(track) {
+    function parseVTT(vttText) {
+      console.log('Parsing VTT file...');
+      var lines = vttText.split('\n');
+      var cues = [];
+      var currentCue = null;
+      
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].trim();
+        
+        // Skip empty lines and WEBVTT header
+        if (!line || line === 'WEBVTT' || line.startsWith('NOTE')) {
+          continue;
+        }
+        
+        // Check if this is a timestamp line
+        if (line.indexOf('-->') !== -1) {
+          var parts = line.split('-->');
+          var startTime = parseTimestamp(parts[0].trim());
+          var endTime = parseTimestamp(parts[1].trim().split(' ')[0]);
+          
+          currentCue = {
+            startTime: startTime,
+            endTime: endTime,
+            text: ''
+          };
+        } else if (currentCue && line) {
+          // This is text for the current cue
+          if (currentCue.text) {
+            currentCue.text += ' ';
+          }
+          currentCue.text += line;
+        } else if (currentCue && !line) {
+          // Empty line means end of cue
+          cues.push(currentCue);
+          currentCue = null;
+        }
+      }
+      
+      // Add last cue if exists
+      if (currentCue) {
+        cues.push(currentCue);
+      }
+      
+      console.log('Parsed', cues.length, 'cues from VTT file');
+      return cues;
+    }
+    
+    function parseTimestamp(timestamp) {
+      // Parse VTT timestamp like "00:00:12.500" or "00:12.500"
+      var parts = timestamp.split(':');
+      var seconds = 0;
+      
+      if (parts.length === 3) {
+        // HH:MM:SS.mmm
+        seconds = parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseFloat(parts[2]);
+      } else if (parts.length === 2) {
+        // MM:SS.mmm
+        seconds = parseInt(parts[0]) * 60 + parseFloat(parts[1]);
+      } else {
+        // SS.mmm
+        seconds = parseFloat(parts[0]);
+      }
+      
+      return seconds;
+    }
+    
+    function renderTranscript(cues) {
       var transcriptContent = transcriptContainer.querySelector('.vjs-transcript-content');
       var statusElement = transcriptContainer.querySelector('.vjs-transcript-status');
-      var cues = track.cues;
       
-      if (!cues || cues.length === 0) {
-        console.log('No cues available yet');
-        return false;
-      }
+      console.log('Rendering', cues.length, 'cues to transcript');
       
-      if (cues.length === lastCueCount && allCuesLoaded) {
-        return true;
-      }
-      
-      console.log('Rendering', cues.length, 'cues (previously had', lastCueCount, ')');
-      lastCueCount = cues.length;
-      
-      statusElement.textContent = '(' + cues.length + ' of ~265 lines)';
+      statusElement.textContent = '(' + cues.length + ' lines)';
       transcriptContent.innerHTML = '';
       
       for (var j = 0; j < cues.length; j++) {
@@ -118,110 +170,68 @@
         transcriptContent.appendChild(cueElement);
       }
       
-      console.log('Transcript rendered with', cues.length, 'cues');
-      return true;
+      allCues = cues;
+      console.log('Transcript rendered successfully');
     }
     
-    function forceLoadAllCues(track) {
-      console.log('Forcing all cues to load...');
+    function fetchVTTFile(track) {
+      console.log('Fetching VTT file directly...');
       
-      var originalMode = track.mode;
-      var videoDuration = player.duration();
+      // Get the VTT URL from the track
+      var vttUrl = null;
       
-      console.log('Video duration:', videoDuration, 'seconds');
-      
-      // Strategy 1: Set track to "showing" to force load
-      track.mode = 'showing';
-      
-      // Strategy 2: Quickly seek through video to trigger cue loading
-      var currentTime = player.currentTime();
-      var wasPlaying = !player.paused();
-      
-      if (wasPlaying) {
-        player.pause();
+      // Try to get URL from track src
+      if (track.src) {
+        vttUrl = track.src;
       }
       
-      // Seek to multiple points to trigger cue loading
-      var seekPoints = [0, videoDuration * 0.25, videoDuration * 0.5, videoDuration * 0.75, videoDuration - 1];
-      var seekIndex = 0;
-      
-      function seekNext() {
-        if (seekIndex < seekPoints.length) {
-          var seekTo = seekPoints[seekIndex];
-          console.log('Seeking to', seekTo.toFixed(1), 'seconds to load cues...');
-          player.currentTime(seekTo);
-          seekIndex++;
-          setTimeout(seekNext, 300);
-        } else {
-          // Done seeking, restore state
-          console.log('Finished seeking, restoring player state...');
-          player.currentTime(currentTime);
-          
-          // Hide captions after load
-          track.mode = 'hidden';
-          
-          if (wasPlaying) {
-            player.play();
-          }
-          
-          // Wait a bit then render
-          setTimeout(function() {
-            var cueCount = track.cues ? track.cues.length : 0;
-            console.log('Final cue count after force load:', cueCount);
-            
-            if (cueCount > 0) {
-              allCuesLoaded = true;
-              renderCues(track);
-              var statusElement = transcriptContainer.querySelector('.vjs-transcript-status');
-              statusElement.textContent = '(' + cueCount + ' lines)';
-            }
-          }, 1000);
-        }
-      }
-      
-      // Start seeking process after a short delay
-      setTimeout(seekNext, 500);
-    }
-    
-    function waitAndLoadCues(track, attempt) {
-      attempt = attempt || 0;
-      var maxAttempts = 10;
-      
-      console.log('Attempt', attempt + 1, '- Checking for cues...');
-      
-      var cues = track.cues;
-      if (!cues || cues.length === 0) {
-        if (attempt >= maxAttempts) {
-          var statusElement = transcriptContainer.querySelector('.vjs-transcript-status');
-          var transcriptContent = transcriptContainer.querySelector('.vjs-transcript-content');
-          statusElement.textContent = 'Failed to load';
-          transcriptContent.innerHTML = '<p style="padding: 15px; color: #ff6b6b;">Captions failed to load. Try playing the video.</p>';
-          console.error('Failed to load captions');
-          return;
-        }
-        
-        setTimeout(function() {
-          waitAndLoadCues(track, attempt + 1);
-        }, 500);
+      if (!vttUrl) {
+        console.error('Could not find VTT URL');
+        fallbackToPlayerCues(track);
         return;
       }
       
-      // We have some cues, now force load all of them
-      console.log('Initial cues found:', cues.length, '- now forcing full load...');
-      renderCues(track);
+      console.log('VTT URL:', vttUrl);
       
-      // Force load all cues
-      setTimeout(function() {
-        forceLoadAllCues(track);
-      }, 1000);
+      fetch(vttUrl)
+        .then(function(response) {
+          if (!response.ok) {
+            throw new Error('Failed to fetch VTT file');
+          }
+          return response.text();
+        })
+        .then(function(vttText) {
+          var cues = parseVTT(vttText);
+          renderTranscript(cues);
+        })
+        .catch(function(error) {
+          console.error('Error fetching VTT:', error);
+          fallbackToPlayerCues(track);
+        });
+    }
+    
+    function fallbackToPlayerCues(track) {
+      console.log('Falling back to player cues...');
       
-      // Also keep monitoring during playback
-      player.on('timeupdate', function() {
-        if (!allCuesLoaded && track.cues && track.cues.length > lastCueCount) {
-          console.log('More cues loaded during playback:', track.cues.length);
-          renderCues(track);
+      var checkCues = function() {
+        if (track.cues && track.cues.length > 0) {
+          console.log('Using', track.cues.length, 'cues from player');
+          var cues = [];
+          for (var i = 0; i < track.cues.length; i++) {
+            var cue = track.cues[i];
+            cues.push({
+              startTime: cue.startTime,
+              endTime: cue.endTime,
+              text: cue.text
+            });
+          }
+          renderTranscript(cues);
+        } else {
+          setTimeout(checkCues, 500);
         }
-      });
+      };
+      
+      checkCues();
     }
     
     function loadTranscript() {
@@ -234,7 +244,7 @@
       var foundTrack = null;
       for (var i = 0; i < tracks.length; i++) {
         var track = tracks[i];
-        console.log('Track', i + ':', track.kind, track.label, track.language, 'mode:', track.mode);
+        console.log('Track', i + ':', track.kind, track.label, track.language);
         
         if (track.kind === 'captions' || track.kind === 'subtitles') {
           foundTrack = track;
@@ -253,9 +263,10 @@
       activeTrack = foundTrack;
       foundTrack.mode = 'hidden';
       
+      // Wait a moment for track to be ready, then fetch VTT
       setTimeout(function() {
-        waitAndLoadCues(foundTrack);
-      }, 500);
+        fetchVTTFile(foundTrack);
+      }, 1000);
     }
     
     function highlightActiveCue() {
