@@ -5,13 +5,58 @@
     var player = this;
     var transcriptContainer;
     var activeTrack = null;
+    var isVisible = false;
+    
+    function createTranscriptButton() {
+      var Button = videojs.getComponent('Button');
+      var TranscriptButton = videojs.extend(Button, {
+        constructor: function() {
+          Button.apply(this, arguments);
+          this.controlText('Transcript');
+        },
+        buildCSSClass: function() {
+          return 'vjs-transcript-button vjs-control vjs-button';
+        },
+        handleClick: function() {
+          toggleTranscript();
+        }
+      });
+      
+      videojs.registerComponent('TranscriptButton', TranscriptButton);
+      player.getChild('controlBar').addChild('TranscriptButton', {}, 14);
+      
+      console.log('Transcript button added to control bar');
+    }
+    
+    function toggleTranscript() {
+      isVisible = !isVisible;
+      
+      if (isVisible) {
+        transcriptContainer.style.display = 'block';
+        player.el().querySelector('.vjs-transcript-button').classList.add('vjs-transcript-button-active');
+        console.log('Transcript shown');
+      } else {
+        transcriptContainer.style.display = 'none';
+        player.el().querySelector('.vjs-transcript-button').classList.remove('vjs-transcript-button-active');
+        console.log('Transcript hidden');
+      }
+    }
     
     function createTranscriptUI() {
-      var playerParent = player.el().parentNode;
       transcriptContainer = document.createElement('div');
       transcriptContainer.className = 'vjs-transcript-container';
-      transcriptContainer.innerHTML = '<div class="vjs-transcript-header">Transcript <span class="vjs-transcript-status">Loading...</span></div><div class="vjs-transcript-content"></div>';
-      playerParent.insertBefore(transcriptContainer, player.el().nextSibling);
+      transcriptContainer.style.display = 'none'; // Hidden by default
+      transcriptContainer.innerHTML = '<div class="vjs-transcript-header">Transcript <span class="vjs-transcript-close">×</span><span class="vjs-transcript-status">Loading...</span></div><div class="vjs-transcript-content"></div>';
+      
+      // Append to player element so it overlays
+      player.el().appendChild(transcriptContainer);
+      
+      // Add close button functionality
+      var closeBtn = transcriptContainer.querySelector('.vjs-transcript-close');
+      closeBtn.addEventListener('click', function() {
+        toggleTranscript();
+      });
+      
       console.log('Transcript UI created');
     }
     
@@ -124,7 +169,7 @@
     
     function highlightActiveCue() {
       player.on('timeupdate', function() {
-        if (!transcriptContainer) {
+        if (!transcriptContainer || !isVisible) {
           return;
         }
         
@@ -150,6 +195,7 @@
     
     player.ready(function() {
       console.log('Player ready, initializing transcript plugin');
+      createTranscriptButton();
       createTranscriptUI();
       
       player.on('loadedmetadata', function() {
