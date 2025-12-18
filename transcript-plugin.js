@@ -7,9 +7,9 @@
     var activeTrack = null;
     var isVisible = false;
     var transcriptButton;
+    var lastCueCount = 0;
     
     function createTranscriptButton() {
-      // Wait for control bar to be ready
       var controlBar = player.controlBar;
       
       if (!controlBar) {
@@ -17,31 +17,25 @@
         return;
       }
       
-      // Create a simple button element
       transcriptButton = document.createElement('button');
       transcriptButton.className = 'vjs-control vjs-button vjs-transcript-button';
       transcriptButton.type = 'button';
       transcriptButton.title = 'Transcript';
       transcriptButton.innerHTML = '<span class="vjs-icon-placeholder" aria-hidden="true">T</span>';
       
-      // Add click handler
       transcriptButton.addEventListener('click', function() {
         toggleTranscript();
       });
       
-      // Insert button into control bar (before fullscreen button)
       var fullscreenToggle = player.el().querySelector('.vjs-fullscreen-control');
       if (fullscreenToggle && fullscreenToggle.parentNode) {
         fullscreenToggle.parentNode.insertBefore(transcriptButton, fullscreenToggle);
-        console.log('Transcript button added to control bar (before fullscreen)');
+        console.log('Transcript button added to control bar');
       } else {
-        // Fallback: just append to control bar
         var controlBarEl = player.el().querySelector('.vjs-control-bar');
         if (controlBarEl) {
           controlBarEl.appendChild(transcriptButton);
           console.log('Transcript button appended to control bar');
-        } else {
-          console.error('Could not find control bar element');
         }
       }
     }
@@ -76,17 +70,25 @@
       console.log('Transcript UI created');
     }
     
-    function renderCues(track) {
+    function renderCues(track, forceRender) {
       var transcriptContent = transcriptContainer.querySelector('.vjs-transcript-content');
       var statusElement = transcriptContainer.querySelector('.vjs-transcript-status');
       var cues = track.cues;
       
       if (!cues || cues.length === 0) {
-        console.log('Still no cues available');
+        console.log('No cues available yet');
         return false;
       }
       
-      console.log('SUCCESS! Rendering', cues.length, 'cues');
+      // Check if cue count has changed (more cues loaded)
+      if (cues.length === lastCueCount && !forceRender) {
+        console.log('Cue count unchanged:', cues.length);
+        return true; // Already rendered these
+      }
+      
+      console.log('Rendering', cues.length, 'cues (previously had', lastCueCount, ')');
+      lastCueCount = cues.length;
+      
       statusElement.textContent = '(' + cues.length + ' lines)';
       transcriptContent.innerHTML = '';
       
@@ -111,32 +113,75 @@
         transcriptContent.appendChild(cueElement);
       }
       
+      console.log('Transcript rendered successfully with', cues.length, 'cues');
       return true;
     }
     
-    function waitForCues(track, attempt) {
+    function waitForAllCues(track, attempt) {
       attempt = attempt || 0;
-      var maxAttempts = 20;
+      var maxAttempts = 40; // Increase to 20 seconds
       
       console.log('Attempt', attempt + 1, '- Checking for cues...');
       
-      if (renderCues(track)) {
-        console.log('Transcript loaded successfully!');
+      var cues = track.cues;
+      if (!cues || cues.length === 0) {
+        console.log('No cues yet, waiting...');
+        
+        if (attempt >= maxAttempts) {
+          var statusElement = transcriptContainer.querySelector('.vjs-transcript-status');
+          var transcriptContent = transcriptContainer.querySelector('.vjs-transcript-content');
+          statusElement.textContent = 'Failed to load';
+          transcriptContent.innerHTML = '<p style="padding: 15px; color: #ff6b6b;">Captions failed to load. Try playing the video.</p>';
+          console.error('Failed to load captions after', maxAttempts, 'attempts');
+          return;
+        }
+        
+        setTimeout(function() {
+          waitForAllCues(track, attempt + 1);
+        }, 500);
         return;
       }
       
-      if (attempt >= maxAttempts) {
-        var statusElement = transcriptContainer.querySelector('.vjs-transcript-status');
-        var transcriptContent = transcriptContainer.querySelector('.vjs-transcript-content');
-        statusElement.textContent = 'Failed to load';
-        transcriptContent.innerHTML = '<p style="padding: 15px; color: #ff6b6b;">Captions failed to load. Try playing the video.</p>';
-        console.error('Failed to load captions after', maxAttempts, 'attempts');
-        return;
-      }
+      // We have some cues, but let's wait to see if more load
+      var currentCueCount = cues.length;
+      console.log('Found', currentCueCount, 'cues, waiting to see if more load...');
       
+      // Wait a bit longer to see if more cues come in
       setTimeout(function() {
-        waitForCues(track, attempt + 1);
+        var newCueCount = track.cues ? track.cues.length : 0;
+        
+        if (newCueCount > currentCueCount) {
+          console.log('More cues loaded (', newCueCount, '), checking again...');
+          waitForAllCues(track, 0); // Reset attempt counter
+        } else if (attempt < 5) {
+          // Still in first few attempts, give it more time
+          console.log('Same cue count, but still early - waiting more...');
+          waitForAllCues(track, attempt + 1);
+        } else {
+          // Cue count stable, render what we have
+          console.log('Cue count stable at', newCueCount, '- rendering now');
+          renderCues(track, true);
+          
+          // Keep monitoring for late-loading cues
+          monitorForMoreCues(track);
+        }
       }, 500);
+    }
+    
+    function monitorForMoreCues(track) {
+      // Check periodically if more cues load after initial render
+      var checkInterval = setInterval(function() {
+        if (track.cues && track.cues.length > lastCueCount) {
+          console.log('Additional cues detected! Re-rendering...');
+          renderCues(track, true);
+        }
+      }, 2000);
+      
+      // Stop checking after 30 seconds
+      setTimeout(function() {
+        clearInterval(checkInterval);
+        console.log('Stopped monitoring for additional cues');
+      }, 30000);
     }
     
     function loadTranscript() {
@@ -168,19 +213,24 @@
       activeTrack = foundTrack;
       foundTrack.mode = 'hidden';
       
+      // Listen for track load event
       foundTrack.addEventListener('load', function() {
         console.log('Track load event fired');
-        waitForCues(foundTrack);
+        waitForAllCues(foundTrack);
       });
       
-      foundTrack.addEventListener('cuechange', function() {
-        console.log('Track cuechange event fired');
-        if (transcriptContent.children.length === 0) {
-          waitForCues(foundTrack);
-        }
-      });
+      // Start checking for cues
+      waitForAllCues(foundTrack);
       
-      waitForCues(foundTrack);
+      // Also try when video starts playing (sometimes cues load then)
+      player.one('play', function() {
+        console.log('Video started playing, re-checking cues...');
+        setTimeout(function() {
+          if (foundTrack.cues) {
+            renderCues(foundTrack, true);
+          }
+        }, 1000);
+      });
     }
     
     function highlightActiveCue() {
@@ -212,24 +262,57 @@
     player.ready(function() {
       console.log('Player ready, initializing transcript plugin');
       
-      // Wait a bit for control bar to be fully rendered
       setTimeout(function() {
         createTranscriptButton();
         createTranscriptUI();
         
+        // Wait longer before loading transcript
         player.on('loadedmetadata', function() {
-          console.log('Player metadata loaded, loading transcript...');
-          loadTranscript();
-          highlightActiveCue();
+          console.log('Player metadata loaded');
+          setTimeout(function() {
+            console.log('Loading transcript...');
+            loadTranscript();
+            highlightActiveCue();
+          }, 1000);
         });
         
         if (player.readyState() >= 1) {
-          console.log('Player already has metadata, loading transcript now...');
-          loadTranscript();
-          highlightActiveCue();
+          console.log('Player already has metadata');
+          setTimeout(function() {
+            console.log('Loading transcript...');
+            loadTranscript();
+            highlightActiveCue();
+          }, 1000);
         }
       }, 1000);
     });
   });
 
 })(window.videojs);
+```
+
+## What This Version Does Differently:
+
+1. **Waits longer initially** - 1 second delay before starting to check for cues
+2. **Monitors for changes** - Keeps checking if the cue count increases
+3. **Re-renders if more cues load** - Updates the transcript if additional cues appear
+4. **Checks when video plays** - Sometimes cues don't fully load until playback starts
+5. **Continues monitoring** - Watches for 30 seconds after initial render to catch late-loading cues
+6. **Better logging** - Shows you exactly how many cues it finds at each step
+
+## How to Update:
+
+1. **Replace the file on GitHub**
+2. **Wait 3 minutes** for GitHub Pages to update
+3. **Clear cache** (Ctrl+Shift+R)
+4. **Open the console** (F12) and watch the messages
+5. **Look for:** "Rendering X cues (previously had Y)"
+
+## Check the Console:
+
+You should see messages like:
+```
+Attempt 1 - Checking for cues...
+Found 6 cues, waiting to see if more load...
+Cue count stable at 50 - rendering now
+Rendering 50 cues (previously had 0)
