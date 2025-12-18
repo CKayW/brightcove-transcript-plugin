@@ -49,38 +49,4 @@
   </script>
 </body>
 </html>
-```
 
-**Before saving**, you need to replace these placeholders:
-- `YOUR_ACCOUNT_ID` - Your Brightcove account ID
-- `YOUR_PLAYER_ID` - Your Brightcove player ID  
-- `YOUR_VIDEO_ID` - A video ID that has captions/subtitles already uploaded
-
-**Where to find these values:**
-1. Log into Brightcove Studio (https://studio.brightcove.com)
-2. Go to **Players** module
-3. Click on a player
-4. Click **Embed Code & URL** button
-5. You'll see code like: `https://players.brightcove.net/1234567890/default_default/index.html`
-   - `1234567890` is your Account ID
-   - `default` is your Player ID
-
-**Save the file.**
-
-### Step 3: Test Locally
-
-**You need a local web server** because browsers block file:// URLs for security. Here are the easiest options:
-
-**Option A: Using Python (if you have it installed)**
-1. Open Terminal (Mac) or Command Prompt (Windows)
-2. Navigate to your plugin folder:
-```
-   cd C:\Users\YourName\Documents\brightcove-transcript-plugin
-```
-3. Run this command:
-```
-   python -m http.server 8000
-```
-   Or if you have Python 2:
-```
-   python -m SimpleHTTPServer 8000
