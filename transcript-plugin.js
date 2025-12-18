@@ -55,7 +55,7 @@
     
     function waitForCues(track, attempt) {
       attempt = attempt || 0;
-      var maxAttempts = 20; // Try for 10 seconds
+      var maxAttempts = 20;
       
       console.log('Attempt', attempt + 1, '- Checking for cues...');
       
@@ -68,12 +68,11 @@
         var statusElement = transcriptContainer.querySelector('.vjs-transcript-status');
         var transcriptContent = transcriptContainer.querySelector('.vjs-transcript-content');
         statusElement.textContent = 'Failed to load';
-        transcriptContent.innerHTML = '<p style="padding: 15px; color: #ff6b6b;">Captions failed to load. Try refreshing the page or playing the video first.</p>';
+        transcriptContent.innerHTML = '<p style="padding: 15px; color: #ff6b6b;">Captions failed to load. Try playing the video.</p>';
         console.error('Failed to load captions after', maxAttempts, 'attempts');
         return;
       }
       
-      // Try again in 500ms
       setTimeout(function() {
         waitForCues(track, attempt + 1);
       }, 500);
@@ -100,37 +99,34 @@
       
       if (!foundTrack) {
         statusElement.textContent = 'No captions found';
-        transcriptContent.innerHTML = '<p style="padding: 15px; color: #999;">This video does not have captions. Please add captions in Brightcove Studio.</p>';
+        transcriptContent.innerHTML = '<p style="padding: 15px; color: #999;">This video does not have captions.</p>';
         console.warn('No caption tracks found on this video');
         return;
       }
       
       activeTrack = foundTrack;
-      
-      // Make sure track is enabled
       foundTrack.mode = 'hidden';
       
-      // Listen for load event
       foundTrack.addEventListener('load', function() {
-        console.log('Track "load" event fired');
+        console.log('Track load event fired');
         waitForCues(foundTrack);
       });
       
-      // Listen for cuechange
       foundTrack.addEventListener('cuechange', function() {
-        console.log('Track "cuechange" event fired');
+        console.log('Track cuechange event fired');
         if (transcriptContent.children.length === 0) {
           waitForCues(foundTrack);
         }
       });
       
-      // Start polling for cues immediately
       waitForCues(foundTrack);
     }
     
     function highlightActiveCue() {
       player.on('timeupdate', function() {
-        if (!transcriptContainer) return;
+        if (!transcriptContainer) {
+          return;
+        }
         
         var currentTime = player.currentTime();
         var cues = transcriptContainer.querySelectorAll('.vjs-transcript-cue');
@@ -142,5 +138,32 @@
           
           if (currentTime >= startTime && currentTime < endTime) {
             cue.classList.add('vjs-transcript-active');
-            if (transcriptContainer.scrollTop > cue.offsetTop - 100 || 
-                transcriptContainer.scrollTop < cue.offsetTop - tra
+            if (transcriptContainer.scrollTop > cue.offsetTop - 100 || transcriptContainer.scrollTop < cue.offsetTop - transcriptContainer.clientHeight + 100) {
+              cue.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+          } else {
+            cue.classList.remove('vjs-transcript-active');
+          }
+        }
+      });
+    }
+    
+    player.ready(function() {
+      console.log('Player ready, initializing transcript plugin');
+      createTranscriptUI();
+      
+      player.on('loadedmetadata', function() {
+        console.log('Player metadata loaded, loading transcript...');
+        loadTranscript();
+        highlightActiveCue();
+      });
+      
+      if (player.readyState() >= 1) {
+        console.log('Player already has metadata, loading transcript now...');
+        loadTranscript();
+        highlightActiveCue();
+      }
+    });
+  });
+
+})(window.videojs);
