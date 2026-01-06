@@ -1,54 +1,76 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Transcript Plugin Test</title>
+  
+  <!-- Brightcove Player CSS -->
   <link href="https://players.brightcove.net/videojs-player/8/videojs.min.css" rel="stylesheet">
+  
+  <!-- Your Plugin CSS -->
   <link href="transcript-plugin.css" rel="stylesheet">
+  
   <style>
     body {
       font-family: Arial, sans-serif;
-      margin: 20px;
+      margin: 0;
+      padding: 20px;
+      background: #f0f0f0;
     }
-    .video-container {
-      max-width: 960px;
+    
+    .player-container {
+      max-width: 1200px;
       margin: 0 auto;
+      position: relative;
+    }
+    
+    h1 {
+      text-align: center;
+      color: #333;
+    }
+    
+    .video-wrapper {
+      position: relative;
+      display: inline-block;
+      width: 100%;
     }
   </style>
 </head>
 <body>
-  <div class="video-container">
-    <h1>Transcript Plugin Test</h1>
-    
-    <!-- Replace these values with your actual Brightcove info -->
-    <video-js
-      id="myPlayer"
-      data-account="6173655927001"
-      data-player="Kb7EUyBgX"
-      data-embed="default"
-      data-video-id="6349318875112"
-      controls
-      class="video-js"
-      width="640"
-      height="360"
-    ></video-js>
+  <h1>Interactive Transcript Plugin Test</h1>
+  
+  <div class="player-container">
+    <div class="video-wrapper">
+      <video-js
+        id="myPlayer"
+        data-account="6173655927001"
+        data-player="default"
+        data-embed="default"
+        controls
+        data-video-id="6349318875112"
+        data-application-id
+        class="vjs-fluid">
+      </video-js>
+    </div>
   </div>
+
+  <!-- Brightcove Player JS -->
+  <script src="https://players.brightcove.net/videojs-player/8/videojs.min.js"></script>
   
-  <!-- Brightcove Player Script -->
-  <script src="https://players.brightcove.net/6173655927001/Kb7EUyBgX_default/index.min.js"></script>
+  <!-- Your Plugin JS -->
+  <script src="transcript-plugin.js"></script>
   
-  <!-- Your Plugin -->
-  <script src="transcript-plugin.js?v=5"></script>
-  
-  <!-- Initialize Plugin -->
   <script>
+    // Initialize player with plugin
     videojs.getPlayer('myPlayer').ready(function() {
       var player = this;
+      
+      // Initialize the transcript plugin
       player.interactiveTranscript();
+      
+      console.log('Transcript plugin initialized');
     });
   </script>
 </body>
 </html>
-
-
-
